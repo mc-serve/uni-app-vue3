@@ -11,6 +11,7 @@
 # +----------------------------------------------------------------------
 
 stages:          # List of stages for jobs, and their order of execution
+  - clone
   - install
   - test
   - build
@@ -18,14 +19,28 @@ stages:          # List of stages for jobs, and their order of execution
   - end
   - sync
 
+拉取代码:
+  stage: clone
+  tags:
+    - sync
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - echo $CI_PROJECT_PATH
+    - mkdir -p /sync
+    - if [ ! -d /sync/$CI_PROJECT_PATH ]; then
+        git clone ssh://git@dev.mc-serve.com:6822/$CI_PROJECT_PATH.git /sync/$CI_PROJECT_PATH;
+      else
+        cd /sync/$CI_PROJECT_PATH && git pull;
+      fi
+    - cd /sync/$CI_PROJECT_PATH
+    - git branch -r | grep origin/ | grep -v 'HEAD' | sed 's|origin/||' | xargs -I{} git branch --track {} origin/{} 2>/dev/null || true
+
 sync_to_github:
   stage: sync
   tags:
     - sync
   script:
-    # 安装 SSH 客户端
-    # - apt-get update -qq && apt-get install -y openssh-client
-    
     # 配置专用的同步密钥
     - mkdir -p ~/.ssh
     - echo "$SYNC_GITHUB_PRIVATE_KEY" > ~/.ssh/sync_github
@@ -35,8 +50,8 @@ sync_to_github:
     - export GIT_SSH_COMMAND='ssh -i ~/.ssh/sync_github -o StrictHostKeyChecking=no'
 
     # 克隆 GitHub 仓库并同步所有分支
-    - if git remote | grep -q "^github$"; then echo "Remote 'github' already exists."; else git remote add github git@github.com:mc-serve/uni-app-vue3.git; fi
-    - git push github --mirror
-    - git fetch --all
+    - cd /sync/$CI_PROJECT_PATH
+    - if git remote | grep -q "^github$"; then echo "Remote 'github' already exists."; else git remote add github $github_url; fi
     - git push github --all
     - git push github --tags
+    - git branch -r | grep github/ | sed 's|github/||' | xargs -I{} git push github {}
